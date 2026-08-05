@@ -147,7 +147,7 @@ if menu == "Login / Register":
         login_id = st.text_input("Enter your Member ID (e.g., SC-1001)")
         if st.button("Login"):
             users_df = load_data("users", user_cols)
-            user_match = users_df[(users_df["ID"].astype(str).str.strip() == login_id.strip()) & (users_df["Status"].astype(str).str.strip() == "Approved")]
+            user_match = users_df[(users_df["ID"].astype(str).str.strip() == login_id.strip()) & (users_df["Status"].astype(str).str.strip().str.capitalize() == "Approved")]
             if not user_match.empty:
                 st.session_state.logged_in_user = user_match.iloc[0].to_dict()
                 st.rerun()
@@ -290,7 +290,7 @@ elif menu == "Admin Panel":
         
         with tab1:
             st.subheader("Approve New Members")
-            pending = users_df[users_df["Status"].astype(str).str.strip() == "Pending"]
+            pending = users_df[users_df["Status"].astype(str).str.strip().str.capitalize() == "Pending"]
             if not pending.empty:
                 for idx, row in pending.iterrows():
                     c1, c2 = st.columns([4, 1])
@@ -307,7 +307,7 @@ elif menu == "Admin Panel":
 
         with tab2:
             st.subheader("All Registered Members")
-            approved = users_df[users_df["Status"].astype(str).str.strip() == "Approved"]
+            approved = users_df[users_df["Status"].astype(str).str.strip().str.capitalize() == "Approved"]
             st.dataframe(approved)
             if not approved.empty:
                 st.download_button("Download Members CSV", approved.to_csv(index=False).encode('utf-8'), "members.csv", "text/csv")
@@ -328,7 +328,7 @@ elif menu == "Admin Panel":
 
         with tab6:
             st.subheader("Live Member Availability")
-            approved_users = users_df[users_df["Status"].astype(str).str.strip() == "Approved"]
+            approved_users = users_df[users_df["Status"].astype(str).str.strip().str.capitalize() == "Approved"]
             if not approved_users.empty:
                 avail_data = []
                 for _, u in approved_users.iterrows():
