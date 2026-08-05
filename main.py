@@ -22,23 +22,26 @@ def get_sheets_connection():
     client = gspread.authorize(creds)
     return client.open("ScienceClubDB")
 
-def load_data(sheet_name, expected_columns):
+def load_sheet_df(sheet_name, expected_columns):
     try:
         sh = get_sheets_connection()
         ws = sh.worksheet(sheet_name)
-        data = ws.get_all_records()
-        df = pd.DataFrame(data)
+        rows = ws.get_all_values()
+        if len(rows) > 1:
+            header = rows[0]
+            data = rows[1:]
+            df = pd.DataFrame(data, columns=header[:len(data[0])])
+        else:
+            df = pd.DataFrame(columns=expected_columns)
+        
         for col in expected_columns:
             if col not in df.columns:
                 df[col] = ""
         return df
-    except Exception:
-        sh = get_sheets_connection()
-        ws = sh.worksheet(sheet_name)
-        ws.append_row(expected_columns)
+    except Exception as e:
         return pd.DataFrame(columns=expected_columns)
 
-def update_sheet_data(sheet_name, df):
+def update_sheet_from_df(sheet_name, df):
     sh = get_sheets_connection()
     ws = sh.worksheet(sheet_name)
     ws.clear()
@@ -63,8 +66,8 @@ if "logged_in_user" not in st.session_state:
 
 # Helper Functions
 def generate_id():
-    users_df = load_data("users", user_cols)
-    if users_df.empty:
+    users_df = load_sheet_df("users", user_cols)
+    if users_df.empty or len(users_df.dropna(how="all")) == 0:
         return "SC-1001"
     try:
         last_id = users_df.iloc[-1]["ID"]
@@ -77,27 +80,27 @@ def check_availability(user_id):
     today = datetime.now().date()
     now = datetime.now()
     
-    leaves_df = load_data("leaves", leave_cols)
-    user_leaves = leaves_df[leaves_df["ID"] == user_id]
-    for _, row in user_leaves.iterrows():
-        try:
-            s_dt = pd.to_datetime(row["Start_Datetime"])
-            e_dt = pd.to_datetime(row["End_Datetime"])
-            if s_dt <= now <= e_dt:
-                return False, f"🔴 Unavailable (Leave: {row['Reason']})"
-        except:
-            pass
+    leaves_df = load_sheet_df("leaves", leave_cols)
+    for _, row in leaves_df.iterrows():
+        if row["ID"] == user_id:
+            try:
+                s_dt = pd.to_datetime(row["Start_Datetime"])
+                e_dt = pd.to_datetime(row["End_Datetime"])
+                if s_dt <= now <= e_dt:
+                    return False, f"🔴 Unavailable (Leave: {row['Reason']})"
+            except:
+                pass
             
-    exams_df = load_data("exams", exam_cols)
-    user_exams = exams_df[exams_df["ID"] == user_id]
-    for _, row in user_exams.iterrows():
-        try:
-            u_date = pd.to_datetime(row["Unavailable_From"]).date()
-            e_date = pd.to_datetime(row["Exam_Date"]).date()
-            if u_date <= today <= e_date:
-                return False, f"🔴 Unavailable ({row['Exam_Type']} Exam)"
-        except:
-            pass
+    exams_df = load_sheet_df("exams", exam_cols)
+    for _, row in exams_df.iterrows():
+        if row["ID"] == user_id:
+            try:
+                u_date = pd.to_datetime(row["Unavailable_From"]).date()
+                e_date = pd.to_datetime(row["Exam_Date"]).date()
+                if u_date <= today <= e_date:
+                    return False, f"🔴 Unavailable ({row['Exam_Type']} Exam)"
+            except:
+                pass
             
     return True, "🟢 Available"
 
@@ -146,7 +149,7 @@ if menu == "Login / Register":
         st.header("🔑 Member Login")
         login_id = st.text_input("Enter your Member ID (e.g., SC-1001)")
         if st.button("Login"):
-            users_df = load_data("users", user_cols)
+            users_df = load_sheet_df("users", user_cols)
             user_match = users_df[(users_df["ID"].astype(str).str.strip() == login_id.strip()) & (users_df["Status"].astype(str).str.strip().str.lower() == "approved")]
             if not user_match.empty:
                 st.session_state.logged_in_user = user_match.iloc[0].to_dict()
@@ -167,7 +170,7 @@ if menu == "Login / Register":
             submit = st.form_submit_button("Submit Registration")
 
             if submit:
-                users_df = load_data("users", user_cols)
+                users_df = load_sheet_df("users", user_cols)
                 if not name or not email or not dept or not designation:
                     st.error("Please fill all fields!")
                 elif not users_df.empty and email in users_df["Email"].values:
@@ -284,38 +287,34 @@ elif menu == "Admin Panel":
     if admin_pass == "admin123":
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Pending Approvals", "Approved Members", "CT Records", "Final Records", "Work Logs", "Live Availability"])
         
-        users_df = load_data("users", user_cols)
-        exams_df = load_data("exams", exam_cols)
-        work_df = load_data("work_logs", work_cols)
+        users_df = load_sheet_df("users", user_cols)
+        exams_df = load_sheet_df("exams", exam_cols)
+        work_df = load_sheet_df("work_logs", work_cols)
         
         with tab1:
             st.subheader("Approve New Members")
-            # Fallback check: jodi 'Status' column thake ar filter na hoy, tobe sob row dekhabe ba lowercase kore check korbe
             if not users_df.empty:
-                if "Status" in users_df.columns:
-                    pending = users_df[users_df["Status"].astype(str).str.strip().str.lower().isin(["pending", ""])]
-                else:
-                    pending = users_df
-                    
+                pending = users_df[users_df["Status"].astype(str).str.strip().str.lower() == "pending"]
                 if not pending.empty:
                     for idx, row in pending.iterrows():
-                        u_id = row.get('ID', f'SC-100{idx}')
-                        u_name = row.get('Name', 'User')
-                        u_desig = row.get('Designation', 'Member')
-                        u_email = row.get('Email', '')
+                        u_id = row['ID']
+                        u_name = row['Name']
+                        u_desig = row['Designation']
+                        u_email = row['Email']
                         
-                        c1, c2 = st.columns([4, 1])
-                        c1.write(f"**{u_name}** ({u_id}) - {u_desig} | Email: {u_email}")
-                        if c2.button("Approve", key=f"app_btn_{idx}_{u_id}"):
-                            users_df.loc[idx, "Status"] = "Approved"
-                            update_sheet_data("users", users_df)
-                            
-                            if u_email:
-                                send_approval_email(u_email, u_name, u_id)
-                            st.success(f"Approved {u_name}! ID: {u_id}")
-                            st.rerun()
+                        if u_id:
+                            c1, c2 = st.columns([4, 1])
+                            c1.write(f"**{u_name}** ({u_id}) - {u_desig} | Email: {u_email}")
+                            if c2.button("Approve", key=f"app_btn_{idx}_{u_id}"):
+                                users_df.loc[users_df["ID"] == u_id, "Status"] = "Approved"
+                                update_sheet_from_df("users", users_df)
+                                
+                                if u_email:
+                                    send_approval_email(u_email, u_name, u_id)
+                                st.success(f"Approved {u_name}! ID: {u_id}")
+                                st.rerun()
                 else:
-                    st.info("No pending requests found in DataFrame.")
+                    st.info("No pending requests.")
             else:
                 st.info("Users table is empty.")
 
@@ -331,13 +330,13 @@ elif menu == "Admin Panel":
 
         with tab3:
             st.subheader("Class Test (CT) Data")
-            if not exams_df.empty and "Exam_Type" in exams_df.columns:
+            if not exams_df.empty:
                 ct_data = exams_df[exams_df["Exam_Type"] == "Class Test (CT)"]
                 st.dataframe(ct_data)
 
         with tab4:
             st.subheader("Final Exam Data")
-            if not exams_df.empty and "Exam_Type" in exams_df.columns:
+            if not exams_df.empty:
                 final_data = exams_df[exams_df["Exam_Type"].isin(["Semester Final", "Yearly Exam"])]
                 st.dataframe(final_data)
 
@@ -347,7 +346,7 @@ elif menu == "Admin Panel":
 
         with tab6:
             st.subheader("Live Member Availability")
-            if not users_df.empty and "Status" in users_df.columns:
+            if not users_df.empty:
                 approved_users = users_df[users_df["Status"].astype(str).str.strip().str.lower() == "approved"]
                 if not approved_users.empty:
                     avail_data = []
