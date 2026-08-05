@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, date
+import smtplib
+from email.mime.text import MIMEText
 
 # ---------------------------------------------------------
 # SETUP & DATABASE INITIALIZATION
@@ -47,6 +49,28 @@ def check_availability(user_id):
             return False, f"🔴 Unavailable ({row['Exam_Type']} Exam)"
             
     return True, "🟢 Available"
+
+def send_approval_email(to_email, user_name, member_id):
+    # ⚠️ TODO: Ekhane tomar nijer email ar App Password dite hobe real email pathanor jonno
+    sender_email = "ismailhossainashik87@gmail.com" 
+    sender_password = "Ashikashik123456789??" 
+
+    subject = "Science Club - Account Approved!"
+    body = f"Hello {user_name},\n\nCongratulations! Your registration for the Science Club has been approved.\n\nYour official Member ID is: {member_id}\n\nPlease use this ID to log in to our portal.\n\nBest Regards,\nScience Club Admin"
+    
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = to_email
+
+    try:
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        return False
 
 # ---------------------------------------------------------
 # SIDEBAR NAVIGATION
@@ -99,9 +123,10 @@ if menu == "Login / Register":
                     st.error("❌ This email is used before. Try another one.")
                 else:
                     new_id = generate_id()
+                    # Just saving the data, no ID is shown to the user yet
                     new_user = pd.DataFrame([[new_id, name, email, dept, designation, gender, dob, "Pending"]], columns=st.session_state.users.columns)
                     st.session_state.users = pd.concat([st.session_state.users, new_user], ignore_index=True)
-                    st.success(f"✅ Registration successful! Your ID is **{new_id}**. Please save it! Wait for admin approval.")
+                    st.success("✅ Registration successful! Please wait for admin approval. You will receive your Member ID via email once approved.")
 
 
 # ---------------------------------------------------------
@@ -169,7 +194,6 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
                 
             core_work = st.text_area("What work did you do?")
             
-            # This will now show up for everyone
             assigned_by = st.text_input("Who assigned/called you for this work?")
             
             if st.button("Submit Work Log"):
@@ -229,11 +253,18 @@ elif menu == "Admin Panel":
             if not pending.empty:
                 for idx, row in pending.iterrows():
                     c1, c2 = st.columns([4, 1])
-                    c1.write(f"**{row['Name']}** ({row['ID']}) - {row['Designation']} | Email: {row['Email']}")
+                    c1.write(f"**{row['Name']}** - {row['Designation']} | Email: {row['Email']}")
                     if c2.button("Approve", key=f"app_{idx}"):
                         st.session_state.users.loc[idx, "Status"] = "Approved"
-                        st.success(f"Approved {row['Name']}! An auto-email notification is simulated.")
-                        st.toast(f"📧 Sending confirmation email to {row['Email']}...", icon="📨")
+                        
+                        # Real Email Pathanor chesta kora hocche
+                        email_sent = send_approval_email(row['Email'], row['Name'], row['ID'])
+                        
+                        if email_sent:
+                            st.success(f"Approved {row['Name']}! An official email with the ID has been sent.")
+                        else:
+                            st.warning(f"Approved {row['Name']}! (Email failed to send. Please configure valid Gmail credentials in the code). The ID is: {row['ID']}")
+                        st.rerun()
             else:
                 st.info("No pending requests.")
 
