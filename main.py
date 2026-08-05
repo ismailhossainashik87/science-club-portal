@@ -53,7 +53,7 @@ def check_availability(user_id):
 def send_approval_email(to_email, user_name, member_id):
     # ⚠️ TODO: Ekhane tomar nijer email ar App Password dite hobe real email pathanor jonno
     sender_email = "ismailhossainashik87@gmail.com" 
-    sender_password = "Ashikashik123456789??" 
+    sender_password = "azardcvvawqzsvnl"
 
     subject = "Science Club - Account Approved!"
     body = f"Hello {user_name},\n\nCongratulations! Your registration for the Science Club has been approved.\n\nYour official Member ID is: {member_id}\n\nPlease use this ID to log in to our portal.\n\nBest Regards,\nScience Club Admin"
