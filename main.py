@@ -22,7 +22,9 @@ menu = st.sidebar.selectbox(
     ["Registration", "Exam & Availability", "Work Log & Contribution", "Admin Dashboard"]
 )
 
+# ---------------------------------------------------------
 # 1. REGISTRATION
+# ---------------------------------------------------------
 if menu == "Registration":
     st.header("📝 Member Registration")
     with st.form("reg_form"):
@@ -40,7 +42,9 @@ if menu == "Registration":
             else:
                 st.error("Please fill up all required fields.")
 
+# ---------------------------------------------------------
 # 2. EXAM & AVAILABILITY
+# ---------------------------------------------------------
 elif menu == "Exam & Availability":
     st.header("📅 Exam Date & Availability Tracker")
     approved_users = st.session_state.users[st.session_state.users["Status"] == "Approved"]["Name"].tolist()
@@ -82,7 +86,9 @@ elif menu == "Exam & Availability":
             df["Live_Status"] = status_list
             st.dataframe(df)
 
+# ---------------------------------------------------------
 # 3. WORK LOG
+# ---------------------------------------------------------
 elif menu == "Work Log & Contribution":
     st.header("💼 Daily Work Tracker")
     approved_users = st.session_state.users[st.session_state.users["Status"] == "Approved"]["Name"].tolist()
@@ -103,38 +109,48 @@ elif menu == "Work Log & Contribution":
                 st.session_state.work_logs = pd.concat([st.session_state.work_logs, new_log], ignore_index=True)
                 st.success("Work log saved successfully!")
 
-# 4. ADMIN DASHBOARD
+# ---------------------------------------------------------
+# 4. ADMIN DASHBOARD (PASSWORD PROTECTED)
+# ---------------------------------------------------------
 elif menu == "Admin Dashboard":
     st.header("⚙️ Admin Panel")
-    tab1, tab2, tab3 = st.tabs(["Member Approvals", "Master Exam View", "Monthly Assessment"])
+    
+    # Password Protection
+    admin_pass = st.text_input("Enter Admin Password to Access", type="password")
+    
+    if admin_pass == "ruscadmin123?":  # Ekhane tumi tomar password change kore nite paro
+        tab1, tab2, tab3 = st.tabs(["Member Approvals", "Master Exam View", "Monthly Assessment"])
 
-    with tab1:
-        st.subheader("Pending Registrations")
-        pending_df = st.session_state.users[st.session_state.users["Status"] == "Pending"]
-        if not pending_df.empty:
-            for idx, row in pending_df.iterrows():
-                col1, col2 = st.columns([4, 1])
-                col1.write(f"**{row['Name']}** ({row['Department']}) - {row['Designation']}")
-                if col2.button("Approve", key=f"app_{idx}"):
-                    st.session_state.users.loc[idx, "Status"] = "Approved"
-                    st.rerun()
-        else:
-            st.info("No pending requests.")
+        with tab1:
+            st.subheader("Pending Registrations")
+            pending_df = st.session_state.users[st.session_state.users["Status"] == "Pending"]
+            if not pending_df.empty:
+                for idx, row in pending_df.iterrows():
+                    col1, col2 = st.columns([4, 1])
+                    col1.write(f"**{row['Name']}** ({row['Department']}) - {row['Designation']}")
+                    if col2.button("Approve", key=f"app_{idx}"):
+                        st.session_state.users.loc[idx, "Status"] = "Approved"
+                        st.rerun()
+            else:
+                st.info("No pending requests.")
 
-    with tab2:
-        st.subheader("Exam & Availability Data")
-        if not st.session_state.exams.empty:
-            st.dataframe(st.session_state.exams)
-            csv = st.session_state.exams.to_csv(index=False).encode('utf-8')
-            st.download_button("Download CSV", csv, "exams.csv", "text/csv")
-        else:
-            st.info("No exam data yet.")
+        with tab2:
+            st.subheader("Exam & Availability Data")
+            if not st.session_state.exams.empty:
+                st.dataframe(st.session_state.exams)
+                csv = st.session_state.exams.to_csv(index=False).encode('utf-8')
+                st.download_button("Download CSV", csv, "exams.csv", "text/csv")
+            else:
+                st.info("No exam data yet.")
 
-    with tab3:
-        st.subheader("Performance Evaluation")
-        if not st.session_state.work_logs.empty:
-            summary = st.session_state.work_logs.groupby("Name").agg({"Hours": "sum", "Core_Work": "count"}).reset_index()
-            summary.columns = ["Name", "Total_Hours_Spent", "Total_Tasks_Done"]
-            st.dataframe(summary)
-        else:
-            st.info("No work logs submitted yet.")
+        with tab3:
+            st.subheader("Performance Evaluation")
+            if not st.session_state.work_logs.empty:
+                summary = st.session_state.work_logs.groupby("Name").agg({"Hours": "sum", "Core_Work": "count"}).reset_index()
+                summary.columns = ["Name", "Total_Hours_Spent", "Total_Tasks_Done"]
+                st.dataframe(summary)
+            else:
+                st.info("No work logs submitted yet.")
+                
+    elif admin_pass != "":
+        st.error("❌ Incorrect Password! Access Denied.")
