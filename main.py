@@ -31,7 +31,7 @@ def load_data(sheet_name, expected_columns):
         for col in expected_columns:
             if col not in df.columns:
                 df[col] = ""
-        return df[df[expected_columns[0]] != ""] # Faka row bad dewar jonno
+        return df[df[expected_columns[0]] != ""]
     except Exception:
         sh = get_sheets_connection()
         ws = sh.worksheet(sheet_name)
@@ -51,7 +51,7 @@ def append_row_to_sheet(sheet_name, row_data):
     ws = sh.worksheet(sheet_name)
     ws.append_row([str(val) for val in row_data])
 
-# Define Column Structures (Matched with Sheet)
+# Define Column Structures
 user_cols = ["ID", "Name", "Email", "Department", "Designation", "Gender", "DOB", "Status"]
 exam_cols = ["ID", "Name", "Exam_Type", "Exam_Date", "Unavailable_From", "Justification"]
 work_cols = ["ID", "Name", "Date", "Start_Time", "End_Time", "Total_Hours", "Core_Work", "Extra_Dedication", "Why_Work", "Assigned_By"]
@@ -67,7 +67,6 @@ def generate_id():
     if users_df.empty:
         return "SC-1001"
     try:
-        # Last ID theke next ID banano
         last_id = users_df.iloc[-1]["ID"]
         num = int(str(last_id).split("-")[1]) + 1
         return f"SC-{num}"
@@ -177,7 +176,7 @@ if menu == "Login / Register":
                     new_id = generate_id()
                     new_row = [new_id, name, email, dept, designation, gender, str(dob), "Pending"]
                     append_row_to_sheet("users", new_row)
-                    st.success(f"✅ Registration successful! Your ID is **{new_id}**. Please wait for admin approval.")
+                    st.success("✅ Registration successful! Please wait for admin approval. You will receive your Member ID via email once approved.")
 
 # ---------------------------------------------------------
 # 2. USER DASHBOARD
