@@ -31,7 +31,7 @@ def load_data(sheet_name, expected_columns):
         for col in expected_columns:
             if col not in df.columns:
                 df[col] = ""
-        return df[df[expected_columns[0]] != ""]
+        return df
     except Exception:
         sh = get_sheets_connection()
         ws = sh.worksheet(sheet_name)
@@ -147,7 +147,7 @@ if menu == "Login / Register":
         login_id = st.text_input("Enter your Member ID (e.g., SC-1001)")
         if st.button("Login"):
             users_df = load_data("users", user_cols)
-            user_match = users_df[(users_df["ID"].astype(str).str.strip() == login_id.strip()) & (users_df["Status"].astype(str).str.strip().str.capitalize() == "Approved")]
+            user_match = users_df[(users_df["ID"].astype(str).str.strip() == login_id.strip()) & (users_df["Status"].astype(str).str.strip().str.lower() == "approved")]
             if not user_match.empty:
                 st.session_state.logged_in_user = user_match.iloc[0].to_dict()
                 st.rerun()
@@ -290,37 +290,56 @@ elif menu == "Admin Panel":
         
         with tab1:
             st.subheader("Approve New Members")
-            pending = users_df[users_df["Status"].astype(str).str.strip().str.capitalize() == "Pending"]
-            if not pending.empty:
-                for idx, row in pending.iterrows():
-                    c1, c2 = st.columns([4, 1])
-                    c1.write(f"**{row['Name']}** ({row['ID']}) - {row['Designation']} | Email: {row['Email']}")
-                    if c2.button("Approve", key=f"app_{row['ID']}_{idx}"):
-                        users_df.loc[users_df["ID"] == row['ID'], "Status"] = "Approved"
-                        update_sheet_data("users", users_df)
+            # Fallback check: jodi 'Status' column thake ar filter na hoy, tobe sob row dekhabe ba lowercase kore check korbe
+            if not users_df.empty:
+                if "Status" in users_df.columns:
+                    pending = users_df[users_df["Status"].astype(str).str.strip().str.lower().isin(["pending", ""])]
+                else:
+                    pending = users_df
+                    
+                if not pending.empty:
+                    for idx, row in pending.iterrows():
+                        u_id = row.get('ID', f'SC-100{idx}')
+                        u_name = row.get('Name', 'User')
+                        u_desig = row.get('Designation', 'Member')
+                        u_email = row.get('Email', '')
                         
-                        send_approval_email(row['Email'], row['Name'], row['ID'])
-                        st.success(f"Approved {row['Name']}! ID: {row['ID']}")
-                        st.rerun()
+                        c1, c2 = st.columns([4, 1])
+                        c1.write(f"**{u_name}** ({u_id}) - {u_desig} | Email: {u_email}")
+                        if c2.button("Approve", key=f"app_btn_{idx}_{u_id}"):
+                            users_df.loc[idx, "Status"] = "Approved"
+                            update_sheet_data("users", users_df)
+                            
+                            if u_email:
+                                send_approval_email(u_email, u_name, u_id)
+                            st.success(f"Approved {u_name}! ID: {u_id}")
+                            st.rerun()
+                else:
+                    st.info("No pending requests found in DataFrame.")
             else:
-                st.info("No pending requests.")
+                st.info("Users table is empty.")
 
         with tab2:
             st.subheader("All Registered Members")
-            approved = users_df[users_df["Status"].astype(str).str.strip().str.capitalize() == "Approved"]
-            st.dataframe(approved)
-            if not approved.empty:
-                st.download_button("Download Members CSV", approved.to_csv(index=False).encode('utf-8'), "members.csv", "text/csv")
+            if not users_df.empty:
+                approved = users_df[users_df["Status"].astype(str).str.strip().str.lower() == "approved"]
+                st.dataframe(approved)
+                if not approved.empty:
+                    st.download_button("Download Members CSV", approved.to_csv(index=False).encode('utf-8'), "members.csv", "text/csv")
+            else:
+                st.info("No members found.")
 
         with tab3:
             st.subheader("Class Test (CT) Data")
-            ct_data = exams_df[exams_df["Exam_Type"] == "Class Test (CT)"]
-            st.dataframe(ct_data)
+            if not exams_df.empty and "Exam_Type" in exams_df.columns:
+                ct_data = exams_df[exams_df["Exam_Type"] == "Class Test (CT)"]
+                st.dataframe(ct_data)
 
         with tab4:
             st.subheader("Final Exam Data")
-            final_data = exams_df[exams_df["Exam_Type"].isin(["Semester Final", "Yearly Exam"])]
-            st.dataframe(final_data)
+            if not exams_df.empty and "Exam_Type" in exams_df.columns:
+                final_data = exams_df[exams_df["Exam_Type"].isin(["Semester Final", "Yearly Exam"])]
+                st.dataframe(final_data)
 
         with tab5:
             st.subheader("Contribution & Work Logs")
@@ -328,15 +347,18 @@ elif menu == "Admin Panel":
 
         with tab6:
             st.subheader("Live Member Availability")
-            approved_users = users_df[users_df["Status"].astype(str).str.strip().str.capitalize() == "Approved"]
-            if not approved_users.empty:
-                avail_data = []
-                for _, u in approved_users.iterrows():
-                    _, status_text = check_availability(u['ID'])
-                    avail_data.append({"ID": u['ID'], "Name": u['Name'], "Designation": u['Designation'], "Status": status_text})
-                st.dataframe(pd.DataFrame(avail_data))
+            if not users_df.empty and "Status" in users_df.columns:
+                approved_users = users_df[users_df["Status"].astype(str).str.strip().str.lower() == "approved"]
+                if not approved_users.empty:
+                    avail_data = []
+                    for _, u in approved_users.iterrows():
+                        _, status_text = check_availability(u['ID'])
+                        avail_data.append({"ID": u['ID'], "Name": u['Name'], "Designation": u['Designation'], "Status": status_text})
+                    st.dataframe(pd.DataFrame(avail_data))
+                else:
+                    st.info("No approved members yet.")
             else:
-                st.info("No approved members yet.")
+                st.info("No data available.")
                 
     elif admin_pass != "":
         st.error("Incorrect Password!")
