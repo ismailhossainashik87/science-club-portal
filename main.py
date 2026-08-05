@@ -31,7 +31,7 @@ def load_data(sheet_name, expected_columns):
         for col in expected_columns:
             if col not in df.columns:
                 df[col] = ""
-        return df
+        return df[df[expected_columns[0]] != ""] # Faka row bad dewar jonno
     except Exception:
         sh = get_sheets_connection()
         ws = sh.worksheet(sheet_name)
@@ -51,21 +51,11 @@ def append_row_to_sheet(sheet_name, row_data):
     ws = sh.worksheet(sheet_name)
     ws.append_row([str(val) for val in row_data])
 
-# Define Column Structures
+# Define Column Structures (Matched with Sheet)
 user_cols = ["ID", "Name", "Email", "Department", "Designation", "Gender", "DOB", "Status"]
 exam_cols = ["ID", "Name", "Exam_Type", "Exam_Date", "Unavailable_From", "Justification"]
 work_cols = ["ID", "Name", "Date", "Start_Time", "End_Time", "Total_Hours", "Core_Work", "Extra_Dedication", "Why_Work", "Assigned_By"]
 leave_cols = ["ID", "Name", "Reason", "Start_Datetime", "End_Datetime"]
-
-# Load Data from Google Sheets into Session State
-if "users" not in st.session_state:
-    st.session_state.users = load_data("users", user_cols)
-if "exams" not in st.session_state:
-    st.session_state.exams = load_data("exams", exam_cols)
-if "work_logs" not in st.session_state:
-    st.session_state.work_logs = load_data("work_logs", work_cols)
-if "leaves" not in st.session_state:
-    st.session_state.leaves = load_data("leaves", leave_cols)
 
 # Login State
 if "logged_in_user" not in st.session_state:
@@ -74,13 +64,20 @@ if "logged_in_user" not in st.session_state:
 # Helper Functions
 def generate_id():
     users_df = load_data("users", user_cols)
-    return f"SC-{1001 + len(users_df)}"
+    if users_df.empty:
+        return "SC-1001"
+    try:
+        # Last ID theke next ID banano
+        last_id = users_df.iloc[-1]["ID"]
+        num = int(str(last_id).split("-")[1]) + 1
+        return f"SC-{num}"
+    except:
+        return f"SC-{1001 + len(users_df)}"
 
 def check_availability(user_id):
     today = datetime.now().date()
     now = datetime.now()
     
-    # Reload leaves & exams from sheets for real-time check
     leaves_df = load_data("leaves", leave_cols)
     user_leaves = leaves_df[leaves_df["ID"] == user_id]
     for _, row in user_leaves.iterrows():
@@ -151,7 +148,7 @@ if menu == "Login / Register":
         login_id = st.text_input("Enter your Member ID (e.g., SC-1001)")
         if st.button("Login"):
             users_df = load_data("users", user_cols)
-            user_match = users_df[(users_df["ID"] == login_id.strip()) & (users_df["Status"] == "Approved")]
+            user_match = users_df[(users_df["ID"].astype(str).str.strip() == login_id.strip()) & (users_df["Status"].astype(str).str.strip() == "Approved")]
             if not user_match.empty:
                 st.session_state.logged_in_user = user_match.iloc[0].to_dict()
                 st.rerun()
@@ -180,7 +177,7 @@ if menu == "Login / Register":
                     new_id = generate_id()
                     new_row = [new_id, name, email, dept, designation, gender, str(dob), "Pending"]
                     append_row_to_sheet("users", new_row)
-                    st.success("✅ Registration successful! Please wait for admin approval. You will receive your Member ID via email once approved.")
+                    st.success(f"✅ Registration successful! Your ID is **{new_id}**. Please wait for admin approval.")
 
 # ---------------------------------------------------------
 # 2. USER DASHBOARD
@@ -194,7 +191,6 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
 
     tab1, tab2, tab3 = st.tabs(["📚 Exam Notice", "💼 Work Log", "🏃‍♂️ Sudden Leave"])
     
-    # --- EXAM NOTICE ---
     with tab1:
         st.subheader("Submit Exam Schedule")
         exam_type = st.selectbox("Exam Type", ["Class Test (CT)", "Semester Final", "Yearly Exam"])
@@ -210,7 +206,7 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
         is_late = datetime.now().date() > unavailable_from
         justification = ""
         if is_late:
-            st.warning("⚠️ You are submitting this notice late (within your unavailable period).")
+            st.warning("⚠️ You are submitting this notice late.")
             justification = st.text_area("Late Notice Justification (Mandatory):")
             
         if st.button("Submit Exam Schedule"):
@@ -221,17 +217,15 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
                 append_row_to_sheet("exams", new_exam)
                 st.success("✅ Exam schedule recorded successfully!")
 
-    # --- WORK LOG ---
     with tab2:
         st.subheader("Daily Work & Contribution")
-        
         extra_dedication = False
         why_work = ""
         assigned_by = ""
         
         if not is_avail:
             st.error(f"⚠️ {avail_text}. You are not expected to work.")
-            extra_dedication = st.checkbox("🔥 Extra Dedication (I am working despite being unavailable)")
+            extra_dedication = st.checkbox("🔥 Extra Dedication")
             if extra_dedication:
                 why_work = st.text_input("Why do you want to work today?")
         
@@ -256,12 +250,11 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
                 
                 new_log = [user["ID"], user["Name"], str(work_date), str(start_time), str(end_time), hours_worked, core_work, status_text, why_work, assigned_by]
                 append_row_to_sheet("work_logs", new_log)
-                st.success(f"✅ Work log saved! Total calculated time: **{hours_worked} hours**.")
+                st.success(f"✅ Work log saved! Total: **{hours_worked} hours**.")
 
-    # --- SUDDEN LEAVE ---
     with tab3:
         st.subheader("Sudden Work / Leave Tracker")
-        leave_reason = st.text_input("Reason (e.g., Going Home, Personal Emergency)")
+        leave_reason = st.text_input("Reason (e.g., Going Home, Emergency)")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -276,11 +269,11 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
             end_dt = datetime.combine(end_leave, end_leave_time)
             
             if start_dt >= end_dt:
-                st.error("End date/time must be after start date/time!")
+                st.error("End date/time must be after start!")
             else:
                 new_leave = [user["ID"], user["Name"], leave_reason, str(start_dt), str(end_dt)]
                 append_row_to_sheet("leaves", new_leave)
-                st.success(f"✅ Leave marked from {start_dt.strftime('%d-%m %I:%M %p')} to {end_dt.strftime('%d-%m %I:%M %p')}.")
+                st.success("✅ Leave marked successfully.")
 
 # ---------------------------------------------------------
 # 3. ADMIN DASHBOARD
@@ -290,77 +283,59 @@ elif menu == "Admin Panel":
     admin_pass = st.text_input("Enter Admin Password", type="password")
     
     if admin_pass == "admin123":
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Pending Approvals", "Approved Members", "CT Records", "Final/Yearly Records", "Work Logs", "Live Availability"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Pending Approvals", "Approved Members", "CT Records", "Final Records", "Work Logs", "Live Availability"])
         
         users_df = load_data("users", user_cols)
         exams_df = load_data("exams", exam_cols)
         work_df = load_data("work_logs", work_cols)
         
-        # --- APPROVALS ---
         with tab1:
             st.subheader("Approve New Members")
-            pending = users_df[users_df["Status"] == "Pending"]
+            pending = users_df[users_df["Status"].astype(str).str.strip() == "Pending"]
             if not pending.empty:
                 for idx, row in pending.iterrows():
                     c1, c2 = st.columns([4, 1])
-                    c1.write(f"**{row['Name']}** - {row['Designation']} | Email: {row['Email']}")
-                    if c2.button("Approve", key=f"app_{row['ID']}"):
+                    c1.write(f"**{row['Name']}** ({row['ID']}) - {row['Designation']} | Email: {row['Email']}")
+                    if c2.button("Approve", key=f"app_{row['ID']}_{idx}"):
                         users_df.loc[users_df["ID"] == row['ID'], "Status"] = "Approved"
                         update_sheet_data("users", users_df)
                         
-                        email_sent = send_approval_email(row['Email'], row['Name'], row['ID'])
-                        if email_sent:
-                            st.success(f"Approved {row['Name']}! An official email with the ID has been sent.")
-                        else:
-                            st.warning(f"Approved {row['Name']}! (Email failed to send). The ID is: {row['ID']}")
+                        send_approval_email(row['Email'], row['Name'], row['ID'])
+                        st.success(f"Approved {row['Name']}! ID: {row['ID']}")
                         st.rerun()
             else:
                 st.info("No pending requests.")
 
-        # --- MEMBERS DIRECTORY ---
         with tab2:
             st.subheader("All Registered Members")
-            approved = users_df[users_df["Status"] == "Approved"]
+            approved = users_df[users_df["Status"].astype(str).str.strip() == "Approved"]
             st.dataframe(approved)
             if not approved.empty:
                 st.download_button("Download Members CSV", approved.to_csv(index=False).encode('utf-8'), "members.csv", "text/csv")
 
-        # --- CT RECORDS ---
         with tab3:
             st.subheader("Class Test (CT) Data")
             ct_data = exams_df[exams_df["Exam_Type"] == "Class Test (CT)"]
             st.dataframe(ct_data)
-            if not ct_data.empty:
-                st.download_button("Download CT Data", ct_data.to_csv(index=False).encode('utf-8'), "ct_records.csv", "text/csv")
 
-        # --- FINAL/YEARLY RECORDS ---
         with tab4:
-            st.subheader("Final & Yearly Exam Data")
+            st.subheader("Final Exam Data")
             final_data = exams_df[exams_df["Exam_Type"].isin(["Semester Final", "Yearly Exam"])]
             st.dataframe(final_data)
-            if not final_data.empty:
-                st.download_button("Download Final Data", final_data.to_csv(index=False).encode('utf-8'), "final_records.csv", "text/csv")
 
-        # --- WORK LOGS ---
         with tab5:
             st.subheader("Contribution & Work Logs")
             st.dataframe(work_df)
-            if not work_df.empty:
-                st.download_button("Download Work Logs", work_df.to_csv(index=False).encode('utf-8'), "work_logs.csv", "text/csv")
 
-        # --- LIVE AVAILABILITY ---
         with tab6:
             st.subheader("Live Member Availability")
-            approved_users = users_df[users_df["Status"] == "Approved"]
-            
+            approved_users = users_df[users_df["Status"].astype(str).str.strip() == "Approved"]
             if not approved_users.empty:
                 avail_data = []
                 for _, u in approved_users.iterrows():
-                    status_bool, status_text = check_availability(u['ID'])
+                    _, status_text = check_availability(u['ID'])
                     avail_data.append({"ID": u['ID'], "Name": u['Name'], "Designation": u['Designation'], "Status": status_text})
-                
-                avail_df = pd.DataFrame(avail_data)
-                st.dataframe(avail_df)
+                st.dataframe(pd.DataFrame(avail_data))
             else:
                 st.info("No approved members yet.")
                 
