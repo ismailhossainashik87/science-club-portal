@@ -150,14 +150,14 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
         st.subheader("Daily Work & Contribution")
         
         extra_dedication = False
-        why_work, assigned_by = "", ""
+        why_work = ""
+        assigned_by = ""
         
         if not is_avail:
             st.error(f"⚠️ {avail_text}. You are not expected to work.")
             extra_dedication = st.checkbox("🔥 Extra Dedication (I am working despite being unavailable)")
             if extra_dedication:
                 why_work = st.text_input("Why do you want to work today?")
-                assigned_by = st.text_input("Who called/assigned you for this?")
         
         if is_avail or extra_dedication:
             work_date = st.date_input("Work Date", value=datetime.today())
@@ -168,6 +168,9 @@ elif menu == "My Dashboard" and st.session_state.logged_in_user:
                 end_time = st.time_input("End Time")
                 
             core_work = st.text_area("What work did you do?")
+            
+            # This will now show up for everyone
+            assigned_by = st.text_input("Who assigned/called you for this work?")
             
             if st.button("Submit Work Log"):
                 # Auto Calculate Hours
